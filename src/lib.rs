@@ -148,6 +148,12 @@ pub trait TextMap {
     }
     fn line_range(&self, line: u32) -> Option<Range<Pos>>;
     fn substr(&self, range: Range<Pos>) -> Option<&str>;
+    fn pos_to_offset(&self, pos: &Pos) -> Option<usize>;
+    fn range_to_offset_range(&self, offsets: Range<Pos>) -> Option<Range<usize>> {
+        let start = self.pos_to_offset(&offsets.start)?;
+        let end = self.pos_to_offset(&offsets.end)?;
+        Some(start..end)
+    }
 }
 
 /// Defines operations to convert between native text types and [`lsp_types`].
@@ -386,11 +392,6 @@ impl<T: Borrow<str>> IndexedText<T> {
             }
         }
     }
-
-    fn pos_to_offset(&self, pos: &Pos) -> Option<usize> {
-        let line_range = self.line_ranges.get(pos.line as usize)?;
-        Some(line_range.start as usize + (pos.col as usize))
-    }
 }
 
 impl<T: Borrow<str>> TextMap for IndexedText<T> {
@@ -421,6 +422,11 @@ impl<T: Borrow<str>> TextMap for IndexedText<T> {
 
         Some(&self.text()[start_offset as usize..end_offset as usize])
     }
+
+    fn pos_to_offset(&self, pos: &Pos) -> Option<usize> {
+        let line_range = self.line_ranges.get(pos.line as usize)?;
+        Some(line_range.start as usize + (pos.col as usize))
+    }
 }
 
 /// Applies a [`TextChange`] to [`IndexedText`] returning a new text as [`String`].
@@ -430,27 +436,26 @@ pub fn apply_change<S: Borrow<str>>(text: &IndexedText<S>, change: TextChange) -
         Some(range) => {
             let orig = text.text();
 
-            let offset_start = text.pos_to_offset(&range.start).unwrap();
-            let offset_end = text.pos_to_offset(&range.end).unwrap();
+            let offsets = text.range_to_offset_range(range).unwrap();
             debug_assert!(
-                offset_start <= offset_end,
+                offsets.start <= offsets.end,
                 "Expected start <= end, got {}..{}",
-                offset_start,
-                offset_end
+                offsets.start,
+                offsets.end
             );
             debug_assert!(
-                offset_end <= orig.len(),
+                offsets.end <= orig.len(),
                 "Expected end <= text.len(), got {} > {}",
-                offset_end,
+                offsets.end,
                 orig.len()
             );
 
             let mut new = orig.to_string();
 
-            if offset_start == text.text().len() {
+            if offsets.start == text.text().len() {
                 new.push_str(&change.patch);
             } else {
-                new.replace_range(offset_start..offset_end, &change.patch)
+                new.replace_range(offsets, &change.patch)
             }
             new
         }
