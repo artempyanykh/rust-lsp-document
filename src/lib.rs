@@ -301,7 +301,7 @@ where
     T: Borrow<str>,
 {
     /// The original text
-    text: T,
+    pub text: T,
     /// Range of start-end offsets for all lines in the `text`. [`u32`] should be
     /// enough for upto 4GB files; show me a source file like this!
     line_ranges: Vec<Range<u32>>,
